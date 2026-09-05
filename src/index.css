@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-fox-mist text-fox-ink antialiased;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(124, 58, 237, 0.25);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 60%, #3b0764 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

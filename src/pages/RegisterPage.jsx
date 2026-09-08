@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   User,
@@ -419,6 +419,21 @@ export default function RegisterPage() {
           </div>
         </motion.div>
       </div>
+
+      {/*
+        Hidden admin entry point. This whole landing/registration page is
+        handed out to every participant, so there is no visible link to the
+        admin login — that would let anyone wander into /admin. Instead this
+        is an invisible (opacity-0), keyboard/screen-reader-excluded hit area
+        pinned to the very bottom-right corner of the screen. Only someone who
+        knows to click that corner reaches the admin login section.
+      */}
+      <Link
+        to="/admin"
+        aria-hidden="true"
+        tabIndex={-1}
+        className="fixed bottom-0 right-0 z-50 h-10 w-10 opacity-0"
+      />
     </div>
   );
 }

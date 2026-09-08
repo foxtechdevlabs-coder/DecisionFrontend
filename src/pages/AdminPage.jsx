@@ -14,12 +14,20 @@ import {
   CaretRight,
   UsersThree,
   Ticket,
+  QrCode,
+  Medal,
 } from "@phosphor-icons/react";
 import { api } from "../api/client.js";
 import { adminSession } from "../api/session.js";
 import OffersManager from "../components/OffersManager.jsx";
+import VoucherManager from "../components/VoucherManager.jsx";
+import logo from "../assets/foxtech-logo-full.jpg";
 
-const logo = "/foxtech-logo-full.jpg";
+const TIER_OPTIONS = [
+  { gamesCompleted: 3, tier: "SILVER" },
+  { gamesCompleted: 6, tier: "GOLD" },
+  { gamesCompleted: 9, tier: "PLATINUM" },
+];
 
 const DEPARTMENTS = [
   "Computer Science / IT",
@@ -122,6 +130,60 @@ function LoginForm({ onSuccess }) {
   );
 }
 
+// The 9 games are played entirely offline — staff simply tell the admin how
+// many the participant finished, and this maps that straight to a tier.
+// Only exactly 3/6/9 are accepted; there's no partial-credit override.
+function TierAssign({ participant, token, onAssigned }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function assign(gamesCompleted) {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await api.adminAssignTier(token, participant.id, gamesCompleted);
+      if (res?.success) onAssigned();
+      else setError(res?.message || "Could not assign tier.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (participant.voucherTier) {
+    const color =
+      participant.voucherTier === "PLATINUM" ? "#7C3AED" : participant.voucherTier === "GOLD" ? "#D4A017" : "#9CA3AF";
+    return (
+      <span
+        className="rounded-full px-2.5 py-1 text-xs font-bold"
+        style={{ backgroundColor: `${color}22`, color }}
+      >
+        {participant.voucherTier}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1">
+        {TIER_OPTIONS.map((opt) => (
+          <button
+            key={opt.tier}
+            onClick={() => assign(opt.gamesCompleted)}
+            disabled={saving}
+            title={`${opt.gamesCompleted} games completed`}
+            className="rounded-md border border-fox-violet/15 px-2 py-1 text-xs font-semibold text-fox-ink/60 transition hover:border-fox-violet/40 hover:text-fox-violet disabled:opacity-50"
+          >
+            {opt.gamesCompleted}
+          </button>
+        ))}
+      </div>
+      {error && <p className="text-[10px] text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 function Dashboard({ token, onLogout }) {
   const [stats, setStats] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -133,6 +195,8 @@ function Dashboard({ token, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("participants");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const refreshParticipants = () => setRefreshTick((t) => t + 1);
 
   const offerOptions = useMemo(
     () => (stats?.offerBreakdown || []).map((o) => o.name),
@@ -164,20 +228,23 @@ function Dashboard({ token, onLogout }) {
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(handle);
-  }, [token, page, search, department, offerFilter, onLogout]);
+  }, [token, page, search, department, offerFilter, onLogout, refreshTick]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function exportCsv() {
-    const header = ["Name", "Phone", "Department", "Year", "College", "Status", "Offer", "Date"];
+    const header = ["Name", "Phone", "Coupon", "Campaign", "Department", "Year", "College", "Wheel Status", "Offer", "Tier", "Date"];
     const rows = participants.map((p) => [
       p.name,
       p.phone,
+      p.couponCode || "",
+      p.campaignType || "",
       p.department,
       p.year || "",
       p.collegeName || "",
       p.status,
       p.offer ? (p.offer.offerType === "custom" ? p.offer.name : `${p.offer.discountPercentage}% - ${p.offer.name}`) : "",
+      p.voucherTier || "",
       p.createdAt,
     ]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -211,10 +278,15 @@ function Dashboard({ token, onLogout }) {
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard label="Total Participants" value={stats?.totalParticipants ?? "—"} icon={Users} />
-          <StatCard label="Total Spins" value={stats?.totalSpins ?? "—"} icon={ArrowsClockwise} />
-          <StatCard label="Offers Distributed" value={stats?.offersDistributed ?? "—"} icon={Gift} />
+          <StatCard label="Coupons Generated" value={stats?.totalCoupons ?? "—"} icon={Ticket} />
+          <StatCard label="Wheel Spins" value={stats?.totalSpins ?? "—"} icon={ArrowsClockwise} />
+          <StatCard label="Unused Wheel Coupons" value={stats?.unusedWheelCoupons ?? "—"} icon={Gift} />
           <StatCard label="Today's Participants" value={stats?.todaysParticipants ?? "—"} icon={CalendarCheck} />
-          <StatCard label="Most Common Offer" value={stats?.mostCommonOffer ?? "—"} icon={Trophy} />
+          <StatCard label="Silver Participants" value={stats?.silverUsers ?? "—"} icon={Medal} />
+          <StatCard label="Gold Participants" value={stats?.goldUsers ?? "—"} icon={Medal} />
+          <StatCard label="Platinum Participants" value={stats?.platinumUsers ?? "—"} icon={Medal} />
+          <StatCard label="Vouchers Generated" value={stats?.vouchersGenerated ?? "—"} icon={QrCode} />
+          <StatCard label="Vouchers Redeemed" value={stats?.vouchersRedeemed ?? "—"} icon={Trophy} />
         </div>
 
         <div className="mt-8 flex gap-2">
@@ -234,13 +306,28 @@ function Dashboard({ token, onLogout }) {
             }`}
           >
             <Ticket size={16} weight="bold" />
-            Wheel Offers
+            Decision Wheel
+          </button>
+          <button
+            onClick={() => setTab("vouchers")}
+            className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              tab === "vouchers" ? "bg-fox-gradient text-white" : "bg-white text-fox-ink/60 hover:bg-fox-violet/5"
+            }`}
+          >
+            <QrCode size={16} weight="bold" />
+            Voucher Management
           </button>
         </div>
 
         {tab === "offers" && (
           <div className="mt-4">
             <OffersManager token={token} />
+          </div>
+        )}
+
+        {tab === "vouchers" && (
+          <div className="mt-4">
+            <VoucherManager token={token} />
           </div>
         )}
 
@@ -309,11 +396,11 @@ function Dashboard({ token, onLogout }) {
                 <tr className="border-b border-fox-violet/10 text-xs uppercase tracking-wide text-fox-ink/50">
                   <th className="py-2 pr-4">Name</th>
                   <th className="py-2 pr-4">Phone</th>
-                  <th className="py-2 pr-4">Department</th>
-                  <th className="py-2 pr-4">Year</th>
+                  <th className="py-2 pr-4">Coupon</th>
+                  <th className="py-2 pr-4">Campaign</th>
                   <th className="py-2 pr-4">College</th>
-                  <th className="py-2 pr-4">Offer</th>
-                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Wheel</th>
+                  <th className="py-2 pr-4">Tier</th>
                   <th className="py-2 pr-4">Date</th>
                 </tr>
               </thead>
@@ -341,26 +428,48 @@ function Dashboard({ token, onLogout }) {
                     <tr key={p.id} className="border-b border-fox-violet/5">
                       <td className="py-3 pr-4 font-medium text-fox-ink">{p.name}</td>
                       <td className="py-3 pr-4 text-fox-ink/70">{p.phone}</td>
-                      <td className="py-3 pr-4 text-fox-ink/70">{p.department}</td>
-                      <td className="py-3 pr-4 text-fox-ink/70">{p.year || "—"}</td>
-                      <td className="py-3 pr-4 text-fox-ink/70">{p.collegeName || "—"}</td>
-                      <td className="py-3 pr-4 text-fox-ink/70">
-                        {p.offer
-                          ? p.offer.offerType === "custom"
-                            ? p.offer.name
-                            : `${p.offer.discountPercentage}% — ${p.offer.name}`
-                          : "—"}
+                      <td className="py-3 pr-4">
+                        <span className="rounded-md bg-fox-gradient-soft px-2 py-1 font-mono text-xs font-bold text-fox-violet">
+                          {p.couponCode || "—"}
+                        </span>
                       </td>
                       <td className="py-3 pr-4">
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            p.status === "Spun"
-                              ? "bg-fox-gradient-soft text-fox-violet"
-                              : "bg-fox-ink/5 text-fox-ink/50"
+                            p.campaignType === "NORMAL" ? "bg-fox-ink/5 text-fox-ink/60" : "bg-fox-gradient-soft text-fox-violet"
                           }`}
                         >
-                          {p.status}
+                          {p.campaignType === "NORMAL" ? "Normal (QR)" : "Instagram"}
                         </span>
+                      </td>
+                      <td className="py-3 pr-4 text-fox-ink/70">{p.collegeName || "—"}</td>
+                      <td className="py-3 pr-4">
+                        {p.campaignType === "NORMAL" ? (
+                          <span className="text-fox-ink/30">—</span>
+                        ) : (
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              p.status === "Spun"
+                                ? "bg-fox-gradient-soft text-fox-violet"
+                                : "bg-fox-ink/5 text-fox-ink/50"
+                            }`}
+                          >
+                            {p.status === "Spun"
+                              ? p.offer
+                                ? p.offer.offerType === "custom"
+                                  ? p.offer.name
+                                  : `${p.offer.discountPercentage}% — ${p.offer.name}`
+                                : "Spun"
+                              : "Not spun"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {p.campaignType === "NORMAL" ? (
+                          <TierAssign participant={p} token={token} onAssigned={refreshParticipants} />
+                        ) : (
+                          <span className="text-fox-ink/30">—</span>
+                        )}
                       </td>
                       <td className="py-3 pr-4 text-fox-ink/60">{p.createdAt}</td>
                     </tr>

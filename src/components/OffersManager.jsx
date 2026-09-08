@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Percent, Gift, Trash, Plus, Sparkle } from "@phosphor-icons/react";
+import { useNavigate } from "react-router-dom";
+import { Percent, Gift, Trash, Plus, Sparkle, Link as LinkIcon, Check, QrCode } from "@phosphor-icons/react";
 import { api } from "../api/client.js";
 import Wheel from "./Wheel.jsx";
-
-const logo = "/logo.png";
+import logo from "../assets/logo.png";
 
 const WHEEL_COLORS = ["#7C3AED", "#4C1D95", "#A855F7", "#2E1065", "#9333EA", "#3B0764", "#6D28D9"];
 
-const BLANK_DRAFT = { offerType: "percentage", name: "", discountPercentage: "", weight: "", maxClaims: "" };
+const BLANK_DRAFT = { offerType: "percentage", name: "", discountPercentage: "", maxClaims: "" };
 
 function toWheelSegments(offers) {
   return offers
@@ -19,6 +19,55 @@ function toWheelSegments(offers) {
       discountPercentage: o.discountPercentage,
       color: WHEEL_COLORS[index % WHEEL_COLORS.length],
     }));
+}
+
+// The wheel is only reachable via this shared link/QR — there is no path
+// into it from registration. One fixed link works for everyone since entry
+// is gated by each person's own coupon code, not a per-share token.
+function WheelLinkCard() {
+  const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+  const wheelUrl = `${window.location.origin}/wheel`;
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(wheelUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard access can fail — the link is still visible to copy manually
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-fox-violet/10 bg-white p-5 shadow-card">
+      <h3 className="flex items-center gap-2 text-sm font-bold text-fox-ink">
+        <LinkIcon size={16} weight="bold" className="text-fox-violet" />
+        Share the Decision Wheel
+      </h3>
+      <p className="mt-1 text-xs text-fox-ink/50">
+        This is the only way into the wheel — share this link or QR (e.g. on Instagram). Each visitor
+        still needs their own coupon code to actually spin.
+      </p>
+      <div className="mt-4 flex flex-col items-center gap-2">
+        <button
+          onClick={() => navigate("/admin/wheel-qr")}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-fox-gradient px-3 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+        >
+          <QrCode size={16} weight="bold" />
+          View QR
+        </button>
+        <button
+          onClick={copyLink}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-fox-violet/20 px-3 py-2 text-xs font-semibold text-fox-violet transition hover:bg-fox-violet/5"
+        >
+          {copied ? <Check size={14} weight="bold" /> : <LinkIcon size={14} weight="bold" />}
+          {copied ? "Copied!" : "Copy Link"}
+        </button>
+        <p className="break-all text-center text-xs text-fox-ink/40">{wheelUrl}</p>
+      </div>
+    </div>
+  );
 }
 
 function TypeToggle({ value, onChange }) {
@@ -53,7 +102,6 @@ function OfferRow({ offer, token, onChanged, onError }) {
     offerType: offer.offerType,
     name: offer.name,
     discountPercentage: offer.discountPercentage ?? "",
-    weight: offer.weight,
     maxClaims: offer.maxClaims ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -63,7 +111,6 @@ function OfferRow({ offer, token, onChanged, onError }) {
     draft.offerType !== offer.offerType ||
     draft.name !== offer.name ||
     String(draft.discountPercentage ?? "") !== String(offer.discountPercentage ?? "") ||
-    Number(draft.weight) !== offer.weight ||
     String(draft.maxClaims ?? "") !== String(offer.maxClaims ?? "");
 
   async function save() {
@@ -74,7 +121,6 @@ function OfferRow({ offer, token, onChanged, onError }) {
         offerType: draft.offerType,
         name: draft.name.trim(),
         discountPercentage: draft.offerType === "custom" ? null : Number(draft.discountPercentage),
-        weight: Number(draft.weight),
         maxClaims: draft.maxClaims === "" ? null : Number(draft.maxClaims),
       });
       if (res?.success) onChanged(res.offer);
@@ -143,15 +189,6 @@ function OfferRow({ offer, token, onChanged, onError }) {
             className="w-20 rounded-lg border border-fox-violet/15 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-fox-violet/30"
           />
         )}
-      </td>
-      <td className="py-2 pr-3">
-        <input
-          type="number"
-          min="0"
-          value={draft.weight}
-          onChange={(e) => setDraft((d) => ({ ...d, weight: e.target.value }))}
-          className="w-20 rounded-lg border border-fox-violet/15 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-fox-violet/30"
-        />
       </td>
       <td className="py-2 pr-3">
         <input
@@ -231,11 +268,11 @@ export default function OffersManager({ token }) {
     e.preventDefault();
     setError("");
     const needsDiscount = newOffer.offerType === "percentage";
-    if (!newOffer.name.trim() || (needsDiscount && newOffer.discountPercentage === "") || newOffer.weight === "") {
+    if (!newOffer.name.trim() || (needsDiscount && newOffer.discountPercentage === "")) {
       setError(
         needsDiscount
-          ? "Name, discount percentage and weight are required to add an offer."
-          : "Reward text and weight are required to add an offer."
+          ? "Name and discount percentage are required to add an offer."
+          : "Reward text is required to add an offer."
       );
       return;
     }
@@ -245,7 +282,6 @@ export default function OffersManager({ token }) {
         offerType: newOffer.offerType,
         name: newOffer.name.trim(),
         discountPercentage: needsDiscount ? Number(newOffer.discountPercentage) : null,
-        weight: Number(newOffer.weight),
         maxClaims: newOffer.maxClaims === "" ? null : Number(newOffer.maxClaims),
         isActive: true,
       });
@@ -273,7 +309,8 @@ export default function OffersManager({ token }) {
         </h2>
         <p className="mt-1 text-sm text-fox-ink/60">
           Changes here apply to the public wheel immediately — no redeploy needed. Rewards can be a
-          percentage discount or plain text (e.g. "Free Course Kit").
+          percentage discount or plain text (e.g. "Free Internship"). Every active prize has an equal
+          chance — there's no weighting.
         </p>
 
         {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
@@ -285,7 +322,6 @@ export default function OffersManager({ token }) {
                 <th className="py-2 pr-3">Name / Reward Text</th>
                 <th className="py-2 pr-3">Type</th>
                 <th className="py-2 pr-3">Discount %</th>
-                <th className="py-2 pr-3">Weight</th>
                 <th className="py-2 pr-3">Max Claims</th>
                 <th className="py-2 pr-3 text-center">Won</th>
                 <th className="py-2 pr-3">Status</th>
@@ -349,16 +385,6 @@ export default function OffersManager({ token }) {
               </div>
             )}
             <div>
-              <label className="mb-1 block text-xs text-fox-ink/60">Weight</label>
-              <input
-                type="number"
-                min="0"
-                value={newOffer.weight}
-                onChange={(e) => setNewOffer((d) => ({ ...d, weight: e.target.value }))}
-                className="w-24 rounded-lg border border-fox-violet/15 bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-fox-violet/30"
-              />
-            </div>
-            <div>
               <label className="mb-1 block text-xs text-fox-ink/60">Max Claims</label>
               <input
                 type="number"
@@ -381,15 +407,19 @@ export default function OffersManager({ token }) {
         </form>
       </div>
 
-      <div className="rounded-2xl border border-fox-violet/10 bg-white p-5 shadow-card">
-        <h3 className="text-sm font-bold text-fox-ink">Live Wheel Preview</h3>
-        <p className="mt-1 text-xs text-fox-ink/50">Only active offers appear on the public wheel.</p>
-        <div className="mt-4 scale-[0.8] origin-top">
-          {previewSegments.length > 0 ? (
-            <Wheel segments={previewSegments} rotation={0} spinning={false} onRotationComplete={() => {}} logoSrc={logo} />
-          ) : (
-            <p className="py-10 text-center text-sm text-fox-ink/40">No active offers — the public wheel is empty.</p>
-          )}
+      <div className="space-y-6">
+        <WheelLinkCard />
+
+        <div className="rounded-2xl border border-fox-violet/10 bg-white p-5 shadow-card">
+          <h3 className="text-sm font-bold text-fox-ink">Live Wheel Preview</h3>
+          <p className="mt-1 text-xs text-fox-ink/50">Only active offers appear on the public wheel.</p>
+          <div className="mt-4 scale-[0.8] origin-top">
+            {previewSegments.length > 0 ? (
+              <Wheel segments={previewSegments} rotation={0} spinning={false} onRotationComplete={() => {}} logoSrc={logo} />
+            ) : (
+              <p className="py-10 text-center text-sm text-fox-ink/40">No active offers — the public wheel is empty.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

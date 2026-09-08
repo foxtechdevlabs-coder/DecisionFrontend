@@ -45,4 +45,32 @@ export const api = {
     request(`/admin/offers/${id}`, { method: "PUT", body: payload, token }),
   adminDeleteOffer: (token, id, { force = false } = {}) =>
     request(`/admin/offers/${id}${force ? "?force=true" : ""}`, { method: "DELETE", token }),
+
+  // Campaign A: coupon -> decision wheel
+  validateCoupon: (couponCode) => request("/coupons/validate", { method: "POST", body: { couponCode } }),
+
+  // Campaign B: 9 offline games -> admin-assigned tier (no online game tracking)
+  adminAssignTier: (token, participantId, gamesCompleted) =>
+    request(`/admin/participants/${participantId}/tier`, {
+      method: "POST",
+      body: { gamesCompleted },
+      token,
+    }),
+
+  // Voucher scratch cards
+  getVoucher: (code) => request(`/vouchers/${code}`),
+  redeemVoucher: (code) => request(`/vouchers/${code}/redeem`, { method: "POST" }),
+  adminGenerateVoucher: (token, tier) => request("/admin/vouchers/generate", { method: "POST", body: { tier }, token }),
+  adminListVouchers: (token, query = {}) => {
+    const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== "" && v != null));
+    const qs = params.toString();
+    return request(`/admin/vouchers${qs ? `?${qs}` : ""}`, { token });
+  },
+  adminGetVoucherPrizes: (token) => request("/admin/voucher-prizes", { token }),
+  adminCreateVoucherPrize: (token, payload) =>
+    request("/admin/voucher-prizes", { method: "POST", body: payload, token }),
+  adminUpdateVoucherPrize: (token, id, payload) =>
+    request(`/admin/voucher-prizes/${id}`, { method: "PUT", body: payload, token }),
+  adminDeleteVoucherPrize: (token, id, { force = false } = {}) =>
+    request(`/admin/voucher-prizes/${id}${force ? "?force=true" : ""}`, { method: "DELETE", token }),
 };

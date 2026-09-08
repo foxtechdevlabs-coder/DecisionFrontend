@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-import { Confetti, PaperPlaneTilt, ArrowRight, SealCheck } from "@phosphor-icons/react";
+import { Confetti, SealCheck, X } from "@phosphor-icons/react";
 
 export default function ResultModal({ offer, onClose, alreadySpun, participantName }) {
   useEffect(() => {
@@ -29,7 +29,6 @@ export default function ResultModal({ offer, onClose, alreadySpun, participantNa
   }, [offer]);
 
   const isCustom = offer?.offerType === "custom";
-  const rewardLabel = offer ? (isCustom ? offer.name : `${offer.discountPercentage}% Discount`) : "";
   const firstName = participantName ? participantName.trim().split(/\s+/)[0] : "";
 
   return (
@@ -48,6 +47,13 @@ export default function ResultModal({ offer, onClose, alreadySpun, participantNa
             className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white p-8 text-center shadow-glow"
           >
             <div className="absolute inset-x-0 top-0 h-1.5 bg-fox-gradient" />
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="absolute right-4 top-5 text-fox-ink/30 transition hover:text-fox-ink/60"
+            >
+              <X size={18} weight="bold" />
+            </button>
 
             <div
               className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${
@@ -83,23 +89,6 @@ export default function ResultModal({ offer, onClose, alreadySpun, participantNa
             <p className="mt-2 text-sm text-fox-ink/60">
               {isCustom ? "as your exclusive FOXTECH reward." : "on selected FOXTECH courses."}
             </p>
-
-            <div className="mt-8 space-y-4">
-              <a
-                href="tel:+910000000000"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-fox-gradient py-3.5 text-sm font-bold text-white shadow-glow-sm transition hover:brightness-110 active:scale-[0.99]"
-              >
-                <PaperPlaneTilt size={18} weight="bold" />
-                Enquire About {rewardLabel}
-              </a>
-              <button
-                onClick={onClose}
-                className="mx-auto flex items-center gap-1.5 text-sm font-semibold text-fox-violet transition hover:gap-2.5"
-              >
-                Explore Courses
-                <ArrowRight size={16} weight="bold" />
-              </button>
-            </div>
           </motion.div>
         </motion.div>
       )}

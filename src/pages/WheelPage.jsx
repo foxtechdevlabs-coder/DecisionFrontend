@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { SpinnerGap } from "@phosphor-icons/react";
+import { SpinnerGap, Confetti } from "@phosphor-icons/react";
 import { api } from "../api/client.js";
-import { participantSession } from "../api/session.js";
 import GlowBackdrop from "../components/GlowBackdrop.jsx";
 import Wheel from "../components/Wheel.jsx";
 import ResultModal from "../components/ResultModal.jsx";
-
-const logoMark = "/logo.png";
-const logo = "/foxtech-logo-full.jpg";
+import CouponEntry from "../components/CouponEntry.jsx";
+import logoMark from "../assets/logo.png";
+import logo from "../assets/foxtech-logo-full.jpg";
 
 const EXTRA_SPINS = 6;
 
@@ -24,7 +22,10 @@ function computeTargetRotation(offers, winningOfferId) {
 }
 
 export default function WheelPage() {
-  const navigate = useNavigate();
+  // No session bypass: the wheel is only reachable via its own admin-shared
+  // link/QR, separate from registration, and stays locked on every visit
+  // until a valid coupon is entered here — there is no stored-session
+  // shortcut past that gate.
   const [session, setSession] = useState(null);
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,15 +35,16 @@ export default function WheelPage() {
   const [pendingResult, setPendingResult] = useState(null); // offer to reveal once wheel stops
   const [result, setResult] = useState(null); // { offer, alreadySpun }
   const [spinError, setSpinError] = useState("");
+  // The result modal is just the celebratory reveal — dismissing it never
+  // navigates away. The prize stays shown inline on this same page so
+  // there's no redirect to registration after a spin, and a refresh just
+  // re-locks behind the coupon gate rather than losing the result.
+  const [modalDismissed, setModalDismissed] = useState(false);
 
   useEffect(() => {
-    const existing = participantSession.load();
-    if (!existing?.token) {
-      navigate("/", { replace: true });
-      return;
-    }
-    setSession(existing);
+    if (!session?.token) return;
 
+    setLoading(true);
     api
       .getOffers()
       .then((data) => {
@@ -54,7 +56,7 @@ export default function WheelPage() {
       })
       .catch(() => setLoadError("Could not load the wheel. Please refresh the page."))
       .finally(() => setLoading(false));
-  }, [navigate]);
+  }, [session]);
 
   async function handleSpin() {
     if (!session?.token || spinning || result) return;
@@ -93,8 +95,7 @@ export default function WheelPage() {
   }
 
   function handleCloseResult() {
-    participantSession.clear();
-    navigate("/");
+    setModalDismissed(true);
   }
 
   return (
@@ -113,6 +114,16 @@ export default function WheelPage() {
           </div>
         </motion.div>
 
+        {!session ? (
+          <CouponEntry
+            title="Enter Your Coupon Code"
+            subtitle="Got a FOXTECH coupon from Instagram? Enter it below to spin the wheel."
+            onValidated={(result) =>
+              setSession({ token: result.token, participantId: result.participantId, name: result.name })
+            }
+          />
+        ) : (
+          <>
         <motion.h1
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -148,18 +159,37 @@ export default function WheelPage() {
 
         {spinError && <p className="mt-4 text-sm text-red-500">{spinError}</p>}
 
-        <button
-          onClick={handleSpin}
-          disabled={loading || Boolean(loadError) || spinning || Boolean(result)}
-          className="mt-10 flex items-center gap-2 rounded-2xl bg-fox-gradient px-12 py-4 text-base font-extrabold tracking-wide text-white shadow-glow transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {spinning && <SpinnerGap size={20} weight="bold" className="animate-spin" />}
-          {spinning ? "SPINNING..." : "SPIN NOW"}
-        </button>
+        {result ? (
+          <div className="mt-10 w-full max-w-sm rounded-2xl bg-fox-gradient-soft p-5 text-center">
+            <p className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-fox-violet/80">
+              <Confetti size={14} weight="fill" />
+              {result.alreadySpun ? "You've already claimed your prize" : "Your prize"}
+            </p>
+            {result.offer.offerType === "custom" ? (
+              <p className="mt-2 text-2xl font-extrabold text-gradient">{result.offer.name}</p>
+            ) : (
+              <>
+                <p className="mt-2 text-3xl font-extrabold text-gradient">{result.offer.discountPercentage}% OFF</p>
+                <p className="mt-1 text-sm text-fox-ink/60">{result.offer.name}</p>
+              </>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={handleSpin}
+            disabled={loading || Boolean(loadError) || spinning}
+            className="mt-10 flex items-center gap-2 rounded-2xl bg-fox-gradient px-12 py-4 text-base font-extrabold tracking-wide text-white shadow-glow transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {spinning && <SpinnerGap size={20} weight="bold" className="animate-spin" />}
+            {spinning ? "SPINNING..." : "SPIN NOW"}
+          </button>
+        )}
+          </>
+        )}
       </div>
 
       <ResultModal
-        offer={result?.offer}
+        offer={modalDismissed ? null : result?.offer}
         alreadySpun={result?.alreadySpun}
         onClose={handleCloseResult}
         participantName={session?.name}
